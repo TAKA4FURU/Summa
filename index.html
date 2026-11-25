@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Summa｜AI会議室</title>
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Summa">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
   :root{
     --bg:#0f1115; --panel:#181b22; --panel2:#20242d; --line:#2c313c;
@@ -80,7 +89,7 @@
 </head>
 <body>
 <header>
-  <h1>Summa <span style="font-size:12px;color:var(--sub);font-weight:400;letter-spacing:0">AI会議室</span></h1>
+  <h1><img src="icons/icon.svg" alt="" style="width:24px;height:24px;vertical-align:-5px;margin-right:6px;border-radius:6px">Summa <span style="font-size:12px;color:var(--sub);font-weight:400;letter-spacing:0">AI会議室</span></h1>
   <button id="btnHist">🕘 履歴</button>
   <button id="btnSet">⚙ 設定</button>
 </header>
@@ -201,6 +210,7 @@ function friendlyError(status, msg) {
   if (status === 429) return "回数の上限に達しました（無料枠の制限など）。少し待ってからもう一度試してください。";
   if (status === 404) return "モデル名が見つかりません。設定で「モデル一覧を取得」して選び直してください。";
   if (status === 402) return "残高・支払い設定を確認してください。";
+  if (status === 503 || status === 529 || status === 500 || status === 502 || status === 504) return "AIのサーバーが混雑しています。数分待ってからもう一度試すか、設定で別のモデルに変えてください。";
   return "エラー（" + status + "）: " + (msg || "不明なエラー");
 }
 
@@ -208,7 +218,28 @@ async function readError(res) {
   let msg = "";
   try { const j = await res.json(); msg = (j.error && (j.error.message || j.error.type)) || JSON.stringify(j); }
   catch (e) { try { msg = await res.text(); } catch (e2) {} }
-  return new Error(friendlyError(res.status, msg));
+  const err = new Error(friendlyError(res.status, msg));
+  err.status = res.status;
+  err.retryable = [429, 500, 502, 503, 504, 529].includes(res.status) || /high demand|overloaded|unavailable|try again later/i.test(msg);
+  return err;
+}
+
+const sleep = (ms, signal) => new Promise((ok, ng) => {
+  const t = setTimeout(ok, ms);
+  if (signal) signal.addEventListener("abort", () => { clearTimeout(t); ng(new DOMException("Aborted", "AbortError")); }, { once: true });
+});
+
+// 混雑・回数制限のときは自動で最大3回やり直す
+async function callWithRetry(provider, model, system, user, signal, onRetry) {
+  const waits = [3000, 7000, 15000];
+  for (let n = 0; ; n++) {
+    try { return await callAI(provider, model, system, user, signal); }
+    catch (e) {
+      if (e.name === "AbortError" || !e.retryable || n >= waits.length) throw e;
+      if (onRetry) onRetry(n + 1, waits.length);
+      await sleep(waits[n], signal);
+    }
+  }
 }
 
 async function callAI(provider, model, system, user, signal) {
@@ -345,7 +376,7 @@ function slotName(sl) { return (PERSONAS[sl.persona] || PERSONAS.std).label + " 
 
 function bodyHtml(r) {
   if (!r) return '<div class="loading">待機中</div>';
-  if (r.loading) return '<div class="loading">考え中…</div>';
+  if (r.loading) return '<div class="loading">' + (r.retry ? "混雑中のため再試行中（" + r.retry + "）" : "考え中…") + '</div>';
   if (r.err) return '<div class="error">' + esc(r.err) + "</div>";
   return renderMd(r.text || "");
 }
@@ -443,7 +474,8 @@ async function run() {
           if (!others.length) { sl.rounds[r] = { text: prev[i].text }; return; }
           user = debatePrompt(q, prev[i].text, others);
         }
-        try { sl.rounds[r] = { text: await callAI(sl.provider, sl.model, system, user, signal) }; }
+        const onRetry = (n, max) => { cell.retry = n + "/" + max; render(); };
+        try { sl.rounds[r] = { text: await callWithRetry(sl.provider, sl.model, system, user, signal, onRetry) }; }
         catch (e) { sl.rounds[r] = { err: e.name === "AbortError" ? "停止しました" : e.message }; }
         render();
       }));
@@ -458,7 +490,8 @@ async function run() {
       if (finals.length >= 1) {
         current.summary = { loading: true, provider: S.chair.provider, model: S.chair.model || PROVIDERS[S.chair.provider].defModel };
         render();
-        try { current.summary.text = await callAI(S.chair.provider, S.chair.model, CHAIR_SYSTEM, chairPrompt(q, finals, rounds > 0), signal); }
+        const onRetry = (n, max) => { current.summary.retry = n + "/" + max; render(); };
+        try { current.summary.text = await callWithRetry(S.chair.provider, S.chair.model, CHAIR_SYSTEM, chairPrompt(q, finals, rounds > 0), signal, onRetry); }
         catch (e) { current.summary.err = e.name === "AbortError" ? "停止しました" : e.message; }
         current.summary.loading = false;
         render();
@@ -479,7 +512,7 @@ $("q").addEventListener("keydown", e => { if (e.key === "Enter" && (e.metaKey ||
 /* ---------- 履歴 ---------- */
 function saveHistory(res) {
   if (!res) return;
-  const clean = JSON.parse(JSON.stringify(res, (k, v) => k === "loading" ? undefined : v));
+  const clean = JSON.parse(JSON.stringify(res, (k, v) => (k === "loading" || k === "retry") ? undefined : v));
   const h = store.get("aik_hist", []);
   h.unshift(clean);
   store.set("aik_hist", h.slice(0, MAX_HIST));

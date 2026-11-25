@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Summa｜AI会議室</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#181b22; --panel2:#20242d; --line:#2c313c;
+    --text:#e8eaf0; --sub:#9aa1b0; --accent:#6ea8ff; --ok:#4fd18b; --err:#ff6b6b; --warn:#ffc65c;
+    --gemini:#8ab4f8; --openai:#5fd3a8; --claude:#e9a46a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;font-size:15px;line-height:1.6;padding-bottom:env(safe-area-inset-bottom)}
+  header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));background:rgba(15,17,21,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  header h1{font-size:18px;margin:0;flex:1;letter-spacing:.05em}
+  button{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 12px;cursor:pointer}
+  button:active{transform:scale(.98)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#08101f;font-weight:700}
+  button.danger{border-color:#5a2a2a;color:var(--err)}
+  button:disabled{opacity:.45;cursor:default}
+  main{max-width:1200px;margin:0 auto;padding:14px}
+  textarea,input,select{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;width:100%}
+  textarea{min-height:96px;resize:vertical}
+  .ask{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .row > *{flex:0 0 auto}
+  .grow{flex:1 1 auto !important}
+  .opts{margin-top:10px;font-size:14px;color:var(--sub)}
+  .opts select{width:auto;padding:6px 8px}
+  .opts label{display:flex;align-items:center;gap:6px}
+  .opts input[type=checkbox]{width:18px;height:18px}
+  .actions{margin-top:10px;display:flex;gap:8px}
+  .actions .primary{flex:1;padding:12px}
+  .notice{font-size:12px;color:var(--sub);margin-top:8px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-top:14px;overflow:hidden}
+  .card.summary{border-color:#3b5486}
+  .card-h{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--panel2)}
+  .card-h .name{font-weight:700}
+  .card-h .model{font-size:12px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .dot{width:10px;height:10px;border-radius:50%;flex:0 0 10px}
+  .p-gemini{background:var(--gemini)} .p-openai{background:var(--openai)} .p-claude{background:var(--claude)}
+  .tabs{display:flex;gap:6px;padding:8px 12px 0;flex-wrap:wrap}
+  .tabs button{padding:4px 10px;font-size:12px;border-radius:999px}
+  .tabs button.on{background:var(--accent);color:#08101f;border-color:var(--accent)}
+  .card-b{padding:10px 14px 14px;word-break:break-word}
+  .card-b h1,.card-b h2,.card-b h3,.card-b h4{font-size:16px;margin:14px 0 6px}
+  .card-b p{margin:6px 0}
+  .card-b ul,.card-b ol{margin:6px 0;padding-left:22px}
+  .card-b code{background:#0b0d11;border-radius:5px;padding:1px 5px;font-size:13px}
+  .card-b pre{background:#0b0d11;border-radius:8px;padding:10px;overflow-x:auto}
+  .card-b pre code{padding:0;background:none}
+  .card-b hr{border:none;border-top:1px solid var(--line)}
+  .loading{color:var(--sub)}
+  .loading::after{content:"";display:inline-block;width:12px;height:12px;margin-left:8px;border:2px solid var(--sub);border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;vertical-align:-2px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .error{color:var(--err)}
+  .grid{display:grid;grid-template-columns:1fr;gap:0 14px}
+  @media (min-width:900px){ .grid{grid-template-columns:repeat(var(--cols,3),1fr)} }
+  .qline{margin-top:14px;color:var(--sub);font-size:13px}
+  .qline b{color:var(--text);font-weight:600}
+  /* overlay panels */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20;display:none;overflow-y:auto;padding:20px 12px}
+  .overlay.show{display:block}
+  .sheet{max-width:640px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px}
+  .sheet h2{font-size:17px;margin:0 0 10px;display:flex;align-items:center}
+  .sheet h2 span{flex:1}
+  .sheet h3{font-size:14px;margin:18px 0 8px;color:var(--sub)}
+  .keybox{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px}
+  .keybox .t{display:flex;align-items:center;gap:8px;font-weight:700;margin-bottom:6px}
+  .keybox .st{font-size:12px;color:var(--sub);margin-top:6px}
+  .slot{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px}
+  .slot .row{margin-top:6px}
+  .slot select,.slot input[type=text]{padding:7px 8px}
+  .small{font-size:12px;color:var(--sub)}
+  .hist-item{padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:var(--panel2);cursor:pointer}
+  .hist-item .d{font-size:12px;color:var(--sub)}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Summa <span style="font-size:12px;color:var(--sub);font-weight:400;letter-spacing:0">AI会議室</span></h1>
+  <button id="btnHist">🕘 履歴</button>
+  <button id="btnSet">⚙ 設定</button>
+</header>
+
+<main>
+  <section class="ask">
+    <textarea id="q" placeholder="質問を入力（例：MayaからBlenderに移行するとき、最初に覚えるべきことは？）"></textarea>
+    <div class="opts row">
+      <label>議論
+        <select id="rounds">
+          <option value="0">なし</option>
+          <option value="1">1往復</option>
+          <option value="2">2往復</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="doSummary" checked> 議長がまとめる</label>
+    </div>
+    <div class="actions">
+      <button class="primary" id="btnSend">送信</button>
+      <button class="danger" id="btnStop" disabled>停止</button>
+    </div>
+    <div class="notice" id="notice"></div>
+  </section>
+
+  <div id="out"></div>
+</main>
+
+<!-- 設定 -->
+<div class="overlay" id="ovSet">
+  <div class="sheet">
+    <h2><span>⚙ 設定</span><button id="btnSetClose">閉じる</button></h2>
+    <div class="small">APIキーはこの端末のブラウザの中にだけ保存されます。ページのファイルやGitHubには書き込まれません。</div>
+
+    <h3>APIキー</h3>
+    <div id="keys"></div>
+
+    <h3>回答者（最大5人）</h3>
+    <div id="slots"></div>
+    <button id="btnAddSlot">＋ 回答者を追加</button>
+
+    <h3>議長（まとめ役）</h3>
+    <div class="slot" id="chair"></div>
+
+    <h3>その他</h3>
+    <div class="row">
+      <button class="danger" id="btnClearKeys">APIキーをすべて消す</button>
+      <button class="danger" id="btnClearHist">履歴をすべて消す</button>
+    </div>
+    <div class="small" style="margin-top:12px">
+      ・Geminiの無料枠では、送った内容がGoogleの製品改善に使われます。仕事の機密情報は入れないでください。<br>
+      ・AIはWeb検索をしないので、最新の情報は古い場合があります。
+    </div>
+  </div>
+</div>
+
+<!-- 履歴 -->
+<div class="overlay" id="ovHist">
+  <div class="sheet">
+    <h2><span>🕘 履歴</span><button id="btnHistClose">閉じる</button></h2>
+    <div id="histList"></div>
+  </div>
+</div>
+
+<datalist id="dl-gemini"></datalist>
+<datalist id="dl-openai"></datalist>
+<datalist id="dl-claude"></datalist>
+
+<script>
+"use strict";
+
+/* ---------- 定数 ---------- */
+const PROVIDERS = {
+  gemini: { label: "Gemini",  defModel: "gemini-3.1-flash-lite", keyUrl: "https://aistudio.google.com/apikey" },
+  openai: { label: "ChatGPT", defModel: "gpt-6.1-terra",         keyUrl: "https://platform.openai.com/api-keys" },
+  claude: { label: "Claude",  defModel: "claude-haiku-5-5",      keyUrl: "https://platform.claude.com/settings/keys" },
+};
+const PERSONAS = {
+  std:    { label: "標準",   prompt: "偏りなく、正確に答えてください。" },
+  real:   { label: "現実派", prompt: "実務的・現実的な観点を重視し、すぐ使える具体的な方法を中心に答えてください。" },
+  care:   { label: "慎重派", prompt: "リスク、注意点、反対意見、質問の前提の誤りを重視し、批判的に検討して答えてください。" },
+  idea:   { label: "発想派", prompt: "よくある答えとは違う切り口、代替案、意外な視点を重視して答えてください。" },
+  expert: { label: "専門家", prompt: "その分野の専門家として、根拠や仕組みを踏まえて深く答えてください。" },
+};
+const BASE_SYSTEM = "あなたは複数のAIが参加する「AI会議室」の回答者の一人です。日本語で、結論を先に書き、簡潔に答えてください。不確かなことは不確かだと明記してください。";
+const CHAIR_SYSTEM = "あなたは「AI会議室」の議長です。複数の回答者の意見を公平に比較し、日本語で分かりやすく整理してください。";
+const MAX_SLOTS = 5;
+const MAX_HIST = 30;
+
+/* ---------- 保存（localStorageは失敗しても動くように） ---------- */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  del(k)    { try { localStorage.removeItem(k); } catch (e) {} },
+};
+
+function defaultSettings() {
+  return {
+    keys: { gemini: "", openai: "", claude: "" },
+    modelLists: { gemini: [], openai: [], claude: [] },
+    slots: [
+      { on: true, provider: "gemini", model: PROVIDERS.gemini.defModel, persona: "real" },
+      { on: true, provider: "gemini", model: PROVIDERS.gemini.defModel, persona: "care" },
+      { on: true, provider: "gemini", model: PROVIDERS.gemini.defModel, persona: "idea" },
+    ],
+    chair: { provider: "gemini", model: PROVIDERS.gemini.defModel },
+    rounds: 0,
+    summary: true,
+  };
+}
+let S = Object.assign(defaultSettings(), store.get("aik_settings", {}));
+S.keys = Object.assign({ gemini: "", openai: "", claude: "" }, S.keys);
+S.modelLists = Object.assign({ gemini: [], openai: [], claude: [] }, S.modelLists);
+function save() { store.set("aik_settings", S); }
+
+/* ---------- AI呼び出し ---------- */
+function friendlyError(status, msg) {
+  if (status === 401 || status === 403) return "APIキーが正しくないか、権限がありません。設定でキーを確認してください。";
+  if (status === 429) return "回数の上限に達しました（無料枠の制限など）。少し待ってからもう一度試してください。";
+  if (status === 404) return "モデル名が見つかりません。設定で「モデル一覧を取得」して選び直してください。";
+  if (status === 402) return "残高・支払い設定を確認してください。";
+  return "エラー（" + status + "）: " + (msg || "不明なエラー");
+}
+
+async function readError(res) {
+  let msg = "";
+  try { const j = await res.json(); msg = (j.error && (j.error.message || j.error.type)) || JSON.stringify(j); }
+  catch (e) { try { msg = await res.text(); } catch (e2) {} }
+  return new Error(friendlyError(res.status, msg));
+}
+
+async function callAI(provider, model, system, user, signal) {
+  const key = S.keys[provider];
+  if (!key) throw new Error(PROVIDERS[provider].label + " のAPIキーが未設定です。⚙設定から入力してください。");
+  model = (model || PROVIDERS[provider].defModel).trim().replace(/^models\//, "");
+
+  if (provider === "gemini") {
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) +
+                ":generateContent?key=" + encodeURIComponent(key);
+    const res = await fetch(url, {
+      method: "POST", signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: "user", parts: [{ text: user }] }],
+      }),
+    });
+    if (!res.ok) throw await readError(res);
+    const j = await res.json();
+    const c = j.candidates && j.candidates[0];
+    const parts = (c && c.content && c.content.parts) || [];
+    const text = parts.filter(p => !p.thought && p.text).map(p => p.text).join("");
+    if (!text) throw new Error("回答が空でした" + (c && c.finishReason ? "（" + c.finishReason + "）" : ""));
+    return text;
+  }
+
+  if (provider === "openai") {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST", signal,
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "system", content: system }, { role: "user", content: user }],
+      }),
+    });
+    if (!res.ok) throw await readError(res);
+    const j = await res.json();
+    const text = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+    if (!text) throw new Error("回答が空でした");
+    return text;
+  }
+
+  if (provider === "claude") {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST", signal,
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+      },
+      body: JSON.stringify({ model, max_tokens: 2048, system, messages: [{ role: "user", content: user }] }),
+    });
+    if (!res.ok) throw await readError(res);
+    const j = await res.json();
+    const text = (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+    if (!text) throw new Error("回答が空でした");
+    return text;
+  }
+  throw new Error("不明なAI: " + provider);
+}
+
+async function fetchModels(provider) {
+  const key = S.keys[provider];
+  if (!key) throw new Error("先にAPIキーを入力してください");
+  let ids = [];
+  if (provider === "gemini") {
+    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=" + encodeURIComponent(key));
+    if (!res.ok) throw await readError(res);
+    const j = await res.json();
+    ids = (j.models || [])
+      .filter(m => (m.supportedGenerationMethods || []).includes("generateContent"))
+      .map(m => m.name.replace(/^models\//, ""))
+      .filter(id => /^gemini/.test(id));
+  } else if (provider === "openai") {
+    const res = await fetch("https://api.openai.com/v1/models", { headers: { "Authorization": "Bearer " + key } });
+    if (!res.ok) throw await readError(res);
+    const j = await res.json();
+    ids = (j.data || []).map(m => m.id).filter(id => /^(gpt|o\d|chatgpt)/.test(id) && !/(audio|realtime|transcribe|tts|image|search|embedding)/.test(id));
+  } else if (provider === "claude") {
+    const res = await fetch("https://api.anthropic.com/v1/models?limit=100", {
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+    });
+    if (!res.ok) throw await readError(res);
+    const j = await res.json();
+    ids = (j.data || []).map(m => m.id);
+  }
+  ids.sort();
+  return ids;
+}
+
+/* ---------- Markdown（簡易・安全） ---------- */
+function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+function inline(s) {
+  return esc(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<i>$2</i>");
+}
+function renderMd(src) {
+  const lines = String(src).replace(/\r/g, "").split("\n");
+  let html = "", inCode = false, code = [], list = null, para = [];
+  const flushPara = () => { if (para.length) { html += "<p>" + para.map(inline).join("<br>") + "</p>"; para = []; } };
+  const closeList = () => { if (list) { html += "</" + list + ">"; list = null; } };
+  for (const line of lines) {
+    if (/^\s*```/.test(line)) {
+      if (inCode) { html += "<pre><code>" + esc(code.join("\n")) + "</code></pre>"; code = []; inCode = false; }
+      else { flushPara(); closeList(); inCode = true; }
+      continue;
+    }
+    if (inCode) { code.push(line); continue; }
+    let m;
+    if (!line.trim()) { flushPara(); closeList(); continue; }
+    if ((m = line.match(/^(#{1,6})\s+(.*)$/))) { flushPara(); closeList(); const n = Math.min(m[1].length + 1, 4); html += "<h" + n + ">" + inline(m[2]) + "</h" + n + ">"; continue; }
+    if (/^\s*([-*_])\s*\1\s*\1[\s\-*_]*$/.test(line)) { flushPara(); closeList(); html += "<hr>"; continue; }
+    if ((m = line.match(/^\s*[-*・]\s+(.*)$/))) { flushPara(); if (list !== "ul") { closeList(); html += "<ul>"; list = "ul"; } html += "<li>" + inline(m[1]) + "</li>"; continue; }
+    if ((m = line.match(/^\s*\d+[.)．]\s+(.*)$/))) { flushPara(); if (list !== "ol") { closeList(); html += "<ol>"; list = "ol"; } html += "<li>" + inline(m[1]) + "</li>"; continue; }
+    closeList();
+    para.push(line);
+  }
+  if (inCode) html += "<pre><code>" + esc(code.join("\n")) + "</code></pre>";
+  flushPara(); closeList();
+  return html;
+}
+
+/* ---------- 結果の表示 ---------- */
+const $ = id => document.getElementById(id);
+let current = null;          // 表示中の結果
+let activeTabs = {};         // カードごとの選択中タブ
+let controller = null;
+
+function slotName(sl) { return (PERSONAS[sl.persona] || PERSONAS.std).label + " · " + PROVIDERS[sl.provider].label; }
+
+function bodyHtml(r) {
+  if (!r) return '<div class="loading">待機中</div>';
+  if (r.loading) return '<div class="loading">考え中…</div>';
+  if (r.err) return '<div class="error">' + esc(r.err) + "</div>";
+  return renderMd(r.text || "");
+}
+
+function render() {
+  const out = $("out");
+  if (!current) { out.innerHTML = ""; return; }
+  const res = current;
+  let h = '<div class="qline">質問：<b>' + esc(res.q) + "</b></div>";
+
+  if (res.summary) {
+    h += '<div class="card summary"><div class="card-h"><span class="dot p-' + res.summary.provider + '"></span>' +
+         '<span class="name">🧑‍⚖️ 議長のまとめ</span><span class="model">' + esc(res.summary.model) + "</span></div>" +
+         '<div class="card-b">' + bodyHtml(res.summary) + "</div></div>";
+  }
+
+  h += '<div class="grid" style="--cols:' + Math.min(res.slots.length, 3) + '">';
+  res.slots.forEach((sl, i) => {
+    const n = sl.rounds.length;
+    const t = activeTabs[i] != null && activeTabs[i] < n ? activeTabs[i] : n - 1;
+    h += '<div class="card"><div class="card-h"><span class="dot p-' + sl.provider + '"></span>' +
+         '<span class="name">' + esc(sl.name) + '</span><span class="model">' + esc(sl.model) + "</span></div>";
+    if (n > 1) {
+      h += '<div class="tabs">';
+      for (let k = 0; k < n; k++) {
+        h += '<button data-card="' + i + '" data-tab="' + k + '" class="' + (k === t ? "on" : "") + '">' + (k === 0 ? "最初の回答" : "議論" + k) + "</button>";
+      }
+      h += "</div>";
+    }
+    h += '<div class="card-b">' + bodyHtml(sl.rounds[t]) + "</div></div>";
+  });
+  h += "</div>";
+  out.innerHTML = h;
+}
+
+$("out").addEventListener("click", e => {
+  const b = e.target.closest("button[data-card]");
+  if (!b) return;
+  activeTabs[+b.dataset.card] = +b.dataset.tab;
+  render();
+});
+
+/* ---------- 実行 ---------- */
+function debatePrompt(q, mine, others) {
+  return "【質問】\n" + q + "\n\n【あなたの前回の回答】\n" + mine + "\n\n【他の回答者の意見】\n" +
+    others.map(o => "■ " + o.name + "\n" + o.text).join("\n\n") +
+    "\n\n他の意見を踏まえて、まず「同意する点」と「反論・補足する点」を短く述べ、そのあと改善した回答を示してください。";
+}
+function chairPrompt(q, answers, debated) {
+  return "【質問】\n" + q + "\n\n【各回答者の" + (debated ? "議論後の最終" : "") + "回答】\n" +
+    answers.map(a => "■ " + a.name + "\n" + a.text).join("\n\n") +
+    "\n\n以下の形式でまとめてください。\n## 結論\n（総合的に一番おすすめの答え）\n## 共通している点\n## 意見が分かれた点\n（どちらがより妥当か、理由も）\n## 注意点";
+}
+
+function setBusy(b) {
+  $("btnSend").disabled = b; $("btnStop").disabled = !b;
+  $("btnSend").textContent = b ? "回答中…" : "送信";
+}
+
+async function run() {
+  const q = $("q").value.trim();
+  if (!q) { $("q").focus(); return; }
+  const slots = S.slots.filter(s => s.on);
+  if (!slots.length) { alert("回答者が1人もいません。設定でオンにしてください。"); return; }
+  const missing = [...new Set(slots.map(s => s.provider).concat(S.summary ? [S.chair.provider] : []))].filter(p => !S.keys[p]);
+  if (missing.length) { alert(missing.map(p => PROVIDERS[p].label).join("・") + " のAPIキーが未設定です。⚙設定から入力してください。"); openSettings(); return; }
+
+  const rounds = +$("rounds").value;
+  S.rounds = rounds; S.summary = $("doSummary").checked; save();
+
+  controller = new AbortController();
+  const signal = controller.signal;
+  activeTabs = {};
+  current = {
+    q, at: Date.now(),
+    slots: slots.map(s => ({ name: slotName(s), provider: s.provider, model: s.model || PROVIDERS[s.provider].defModel, persona: s.persona, rounds: [] })),
+    summary: null,
+  };
+  setBusy(true);
+
+  try {
+    for (let r = 0; r <= rounds; r++) {
+      const prev = current.slots.map(sl => sl.rounds[r - 1]);
+      await Promise.all(current.slots.map(async (sl, i) => {
+        // 前のラウンドで失敗した回答者は以降スキップ
+        if (r > 0 && (!prev[i] || prev[i].err)) return;
+        const cell = { loading: true };
+        sl.rounds[r] = cell; render();
+        const system = BASE_SYSTEM + "\nあなたの役割：" + (PERSONAS[sl.persona] || PERSONAS.std).prompt;
+        let user = q;
+        if (r > 0) {
+          const others = current.slots
+            .map((o, j) => ({ name: o.name, text: prev[j] && !prev[j].err ? prev[j].text : null, j }))
+            .filter(o => o.j !== i && o.text);
+          if (!others.length) { sl.rounds[r] = { text: prev[i].text }; return; }
+          user = debatePrompt(q, prev[i].text, others);
+        }
+        try { sl.rounds[r] = { text: await callAI(sl.provider, sl.model, system, user, signal) }; }
+        catch (e) { sl.rounds[r] = { err: e.name === "AbortError" ? "停止しました" : e.message }; }
+        render();
+      }));
+      if (signal.aborted) break;
+    }
+
+    if (S.summary && !signal.aborted) {
+      const finals = current.slots.map(sl => {
+        const last = [...sl.rounds].reverse().find(x => x && x.text);
+        return last ? { name: sl.name, text: last.text } : null;
+      }).filter(Boolean);
+      if (finals.length >= 1) {
+        current.summary = { loading: true, provider: S.chair.provider, model: S.chair.model || PROVIDERS[S.chair.provider].defModel };
+        render();
+        try { current.summary.text = await callAI(S.chair.provider, S.chair.model, CHAIR_SYSTEM, chairPrompt(q, finals, rounds > 0), signal); }
+        catch (e) { current.summary.err = e.name === "AbortError" ? "停止しました" : e.message; }
+        current.summary.loading = false;
+        render();
+      }
+    }
+  } finally {
+    setBusy(false);
+    controller = null;
+    saveHistory(current);
+    render();
+  }
+}
+
+$("btnSend").onclick = run;
+$("btnStop").onclick = () => { if (controller) controller.abort(); };
+$("q").addEventListener("keydown", e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) run(); });
+
+/* ---------- 履歴 ---------- */
+function saveHistory(res) {
+  if (!res) return;
+  const clean = JSON.parse(JSON.stringify(res, (k, v) => k === "loading" ? undefined : v));
+  const h = store.get("aik_hist", []);
+  h.unshift(clean);
+  store.set("aik_hist", h.slice(0, MAX_HIST));
+}
+function openHistory() {
+  const h = store.get("aik_hist", []);
+  $("histList").innerHTML = h.length ? h.map((r, i) =>
+    '<div class="hist-item" data-i="' + i + '"><div>' + esc(r.q.length > 80 ? r.q.slice(0, 80) + "…" : r.q) + '</div><div class="d">' +
+    new Date(r.at).toLocaleString("ja-JP") + " · " + r.slots.length + "人" + (r.summary ? " · まとめあり" : "") + "</div></div>"
+  ).join("") : '<div class="small">まだ履歴はありません。</div>';
+  $("ovHist").classList.add("show");
+}
+$("histList").addEventListener("click", e => {
+  const it = e.target.closest(".hist-item"); if (!it) return;
+  current = store.get("aik_hist", [])[+it.dataset.i];
+  activeTabs = {};
+  $("q").value = current.q;
+  $("ovHist").classList.remove("show");
+  render();
+  window.scrollTo(0, 0);
+});
+$("btnHist").onclick = openHistory;
+$("btnHistClose").onclick = () => $("ovHist").classList.remove("show");
+
+/* ---------- 設定画面 ---------- */
+function providerOptions(sel) {
+  return Object.keys(PROVIDERS).map(p => '<option value="' + p + '"' + (p === sel ? " selected" : "") + ">" + PROVIDERS[p].label + "</option>").join("");
+}
+function personaOptions(sel) {
+  return Object.keys(PERSONAS).map(p => '<option value="' + p + '"' + (p === sel ? " selected" : "") + ">" + PERSONAS[p].label + "</option>").join("");
+}
+function fillDatalists() {
+  for (const p of Object.keys(PROVIDERS)) {
+    $("dl-" + p).innerHTML = (S.modelLists[p] || []).map(id => '<option value="' + esc(id) + '">').join("");
+  }
+}
+
+function renderKeys() {
+  $("keys").innerHTML = Object.keys(PROVIDERS).map(p =>
+    '<div class="keybox"><div class="t"><span class="dot p-' + p + '"></span>' + PROVIDERS[p].label +
+    ' <a class="small" href="' + PROVIDERS[p].keyUrl + '" target="_blank" rel="noopener">キーの取得ページ</a></div>' +
+    '<div class="row"><input class="grow" type="password" autocomplete="off" data-key="' + p + '" value="' + esc(S.keys[p]) + '" placeholder="APIキーを貼り付け">' +
+    '<button data-show="' + p + '">👁</button></div>' +
+    '<div class="row" style="margin-top:6px"><button data-list="' + p + '">モデル一覧を取得</button></div>' +
+    '<div class="st" id="st-' + p + '">' + (S.keys[p] ? "保存済み" : "未設定") +
+    ((S.modelLists[p] || []).length ? "・モデル " + S.modelLists[p].length + "件" : "") + "</div></div>"
+  ).join("");
+}
+
+function renderSlots() {
+  $("slots").innerHTML = S.slots.map((s, i) =>
+    '<div class="slot"><div class="row"><label class="row"><input type="checkbox" data-si="' + i + '" data-f="on"' + (s.on ? " checked" : "") +
+    ' style="width:18px;height:18px"> <b>回答者' + (i + 1) + "</b></label>" +
+    '<span class="grow"></span>' + (S.slots.length > 1 ? '<button class="danger" data-del="' + i + '">削除</button>' : "") + "</div>" +
+    '<div class="row"><select data-si="' + i + '" data-f="persona" style="width:auto">' + personaOptions(s.persona) + "</select>" +
+    '<select data-si="' + i + '" data-f="provider" style="width:auto">' + providerOptions(s.provider) + "</select></div>" +
+    '<div class="row"><input class="grow" type="text" list="dl-' + s.provider + '" data-si="' + i + '" data-f="model" value="' + esc(s.model) + '" placeholder="モデル名"></div></div>'
+  ).join("");
+  $("btnAddSlot").disabled = S.slots.length >= MAX_SLOTS;
+  $("chair").innerHTML =
+    '<div class="row"><select data-chair="provider" style="width:auto">' + providerOptions(S.chair.provider) + "</select></div>" +
+    '<div class="row"><input class="grow" type="text" list="dl-' + S.chair.provider + '" data-chair="model" value="' + esc(S.chair.model) + '" placeholder="モデル名"></div>';
+}
+
+function openSettings() { renderKeys(); fillDatalists(); renderSlots(); $("ovSet").classList.add("show"); }
+function closeSettings() { save(); $("ovSet").classList.remove("show"); updateNotice(); }
+$("btnSet").onclick = openSettings;
+$("btnSetClose").onclick = closeSettings;
+
+$("keys").addEventListener("input", e => {
+  const p = e.target.dataset.key; if (!p) return;
+  S.keys[p] = e.target.value.trim(); save();
+  $("st-" + p).textContent = S.keys[p] ? "保存済み" : "未設定";
+});
+$("keys").addEventListener("click", async e => {
+  const show = e.target.closest("button[data-show]");
+  if (show) { const inp = document.querySelector('input[data-key="' + show.dataset.show + '"]'); inp.type = inp.type === "password" ? "text" : "password"; return; }
+  const lb = e.target.closest("button[data-list]"); if (!lb) return;
+  const p = lb.dataset.list, st = $("st-" + p);
+  lb.disabled = true; st.textContent = "取得中…";
+  try {
+    const ids = await fetchModels(p);
+    S.modelLists[p] = ids; save(); fillDatalists();
+    st.innerHTML = '<span style="color:var(--ok)">接続OK</span>・モデル ' + ids.length + "件（モデル名の欄をタップすると候補が出ます）";
+  } catch (err) { st.innerHTML = '<span class="error">' + esc(err.message) + "</span>"; }
+  lb.disabled = false;
+});
+
+$("slots").addEventListener("change", e => {
+  const t = e.target, i = t.dataset.si; if (i == null) return;
+  const s = S.slots[+i], f = t.dataset.f;
+  if (f === "on") s.on = t.checked;
+  else if (f === "provider") { s.provider = t.value; s.model = PROVIDERS[t.value].defModel; renderSlots(); }
+  else s[f] = t.value.trim();
+  save();
+});
+$("slots").addEventListener("click", e => {
+  const d = e.target.closest("button[data-del]"); if (!d) return;
+  S.slots.splice(+d.dataset.del, 1); save(); renderSlots();
+});
+$("btnAddSlot").onclick = () => {
+  if (S.slots.length >= MAX_SLOTS) return;
+  S.slots.push({ on: true, provider: "gemini", model: PROVIDERS.gemini.defModel, persona: "std" });
+  save(); renderSlots();
+};
+$("chair").addEventListener("change", e => {
+  const f = e.target.dataset.chair; if (!f) return;
+  if (f === "provider") { S.chair.provider = e.target.value; S.chair.model = PROVIDERS[e.target.value].defModel; renderSlots(); }
+  else S.chair.model = e.target.value.trim();
+  save();
+});
+$("btnClearKeys").onclick = () => {
+  if (!confirm("APIキーをすべて消しますか？")) return;
+  S.keys = { gemini: "", openai: "", claude: "" }; save(); renderKeys();
+};
+$("btnClearHist").onclick = () => {
+  if (!confirm("履歴をすべて消しますか？")) return;
+  store.del("aik_hist");
+};
+
+/* ---------- 初期化 ---------- */
+function updateNotice() {
+  const used = [...new Set(S.slots.filter(s => s.on).map(s => s.provider))];
+  const noKey = used.filter(p => !S.keys[p]);
+  $("notice").innerHTML = noKey.length
+    ? "⚠ " + noKey.map(p => PROVIDERS[p].label).join("・") + ' のAPIキーが未設定です。<a href="#" id="lnkSet">設定を開く</a>'
+    : "回答者：" + S.slots.filter(s => s.on).map(slotName).map(esc).join(" / ");
+  const l = $("lnkSet"); if (l) l.onclick = ev => { ev.preventDefault(); openSettings(); };
+}
+$("rounds").value = String(S.rounds || 0);
+$("doSummary").checked = S.summary !== false;
+fillDatalists();
+updateNotice();
+if (!S.keys.gemini && !S.keys.openai && !S.keys.claude) openSettings();
+</script>
+</body>
+</html>
